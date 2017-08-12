@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 import sys
 import telepot, telepot.aio
-import asyncio, aiofiles, aiohttp
+import asyncio, aiofiles
 import json
-import datetime
-from datetime import datetime, timedelta
-import time
-import os
-import random
 import validate_stickers
 from telepot.aio.loop import MessageLoop
 from telepot.namedtuple import ForceReply
 from telepot.aio.delegate import per_chat_id, create_open, pave_event_space
 
+# Open the json file with the api key, regardless of where the script is ran from.
 with open(sys.path[0] + '/keys.json', 'r') as f:
     key = json.load(f)
+
+# Main bot object.
 class Stickers(telepot.aio.helper.ChatHandler):
+
+    # Most of the messages are stored in variables so checking replies is easy, might as well do it here right?
     def __init__(self, *args, **kwargs):
         super(Stickers, self).__init__(*args, **kwargs)
         self.askname = 'What do you want to name the pack?'
@@ -25,14 +25,18 @@ class Stickers(telepot.aio.helper.ChatHandler):
         self.donemsg = 'You\'re ready to go! Start sending images and I will add them to the pack, then send /done when you\'re done, or reply to this message to set the emoji to be associated with the stickers.'
         self.stickeremoji = '😶'
 
+    # open() is for the first message the bot receieves of the delegattion, I don't have any need to have a starting message every time so we just pass it to on_chat_message() like every other message.
     async def open(self, initial_msg, seed):
         await self.on_chat_message(initial_msg)
         self.from_id = initial_msg['from']['id']
         return True
 
+    # Handles all incoming messages to the bot.
     async def on_chat_message(self, msg):
         content_type, chat_type, chat_id, msg_date, msg_id = telepot.glance(msg, long=True)
+        # Make sure the user is private messaging us.
         if chat_type == 'private':
+            # All the commands will be text, lets just make sure anyway.
             if content_type == 'text':
                 command = msg['text'].lower()
                 if command.startswith('/create'):
@@ -42,6 +46,7 @@ class Stickers(telepot.aio.helper.ChatHandler):
                     if self.packmade:
                         await self.sender.sendMessage('All done! The sticker pack has been made and the stickers have been added, you can now manage it in the official stickers bot or access it right now with https://t.me/addstickers/' + self.packname)
                         self.close()
+                # Check if the user is replying to one of the bots messages and whicih one it is.
                 else:
                     try:
                         reply_msg = msg['reply_to_message']
@@ -55,15 +60,25 @@ class Stickers(telepot.aio.helper.ChatHandler):
                             self.stickeremoji = msg['text']
                     except KeyError:
                         return
+            # Stickers are added as documents.
             elif content_type == 'document':
-                    await self.uploader(msg)
+                await self.uploader(msg)
+            # We don't want them sent as photos
+            elif content_type == 'photo':
+                try:
+                    if self.packname and self.packtitle:
+                        await self.sender.sendMessage('Please send the image as a file(uncompressed).', reply_to_message_id=msg_id)
+                except AttributeError:
+                    pass
         return
 
+    # Initial function for making the pack, don't know why I put it in it's own function.
     async def startstickers(self, msg):
         await self.sender.sendMessage(self.askname, reply_markup=ForceReply())
         self.packmade = False
         return
 
+    # Function to check if the name picked by the user is valid, then stores in the packname variable and continues to picking the title.
     async def namehandler(self, msg):
         packname = msg['text'] + '_by_batchstickerbot'
         namevalid = validate_stickers.name(packname)
@@ -77,6 +92,7 @@ class Stickers(telepot.aio.helper.ChatHandler):
         else:
             await self.sender.sendMessage(self.retryname, reply_markup=ForceReply())
 
+    # Same deal as namehandler(), checks if the title is valid and stores it.
     async def titlehandler(self, msg):
         try:
             if self.packname:
@@ -88,13 +104,14 @@ class Stickers(telepot.aio.helper.ChatHandler):
         except AttributeError:
             await self.sender.sendMessage('Your session expired or you haven\'t started creating a pack, start one with /create.')
 
+    # Function to upload to stickers to the pack.
     async def uploader(self, msg):
         content_type, chat_type, chat_id, msg_date, msg_id = telepot.glance(msg, long=True)
         try:
             if self.packname and self.packtitle:
                 if msg['document']['mime_type'] == 'image/png':
-                    #file_id = msg['document']['file_id']
                     try:
+                        # You have to initialize the pack by creating it with a sticker, and we only do this once, afterwards self.packmade is set to true.
                         if self.packmade:
                             await bot.addStickerToSet(self.from_id, self.packname, msg['document']['file_id'], self.stickeremoji)
                             await self.sender.sendMessage('Sticker added.', reply_to_message_id=msg_id)
