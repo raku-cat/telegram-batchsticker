@@ -24,6 +24,7 @@ class Stickers(telepot.aio.helper.ChatHandler):
         self.retrytitle = 'Sorry this title is too long, keep it less than 64 characters.'
         self.donemsg = 'You\'re ready to go! Start sending images and I will add them to the pack, then send /done when you\'re done, or reply to this message to set the emoji to be associated with the stickers.'
         self.stickeremoji = '😶'
+        self.askedit = 'What is the name of the sticker pack you want to edit? Please note, I can only edit packs I have created.'
 
     # open() is for the first message the bot receieves of the delegattion, I don't have any need to have a starting message every time so we just pass it to on_chat_message() like every other message.
     async def open(self, initial_msg, seed):
@@ -42,10 +43,16 @@ class Stickers(telepot.aio.helper.ChatHandler):
                 if command.startswith('/create'):
                     await self.sender.sendChatAction('typing')
                     await self.startstickers(msg)
-                if command.startswith('/done'):
-                    if self.packmade:
-                        await self.sender.sendMessage('All done! The sticker pack has been made and the stickers have been added, you can now manage it in the official stickers bot or access it right now with https://t.me/addstickers/' + self.packname)
-                        self.close()
+                elif command.startswith('/done'):
+                    try:
+                        if self.packmade:
+                            await self.sender.sendMessage('All done! The sticker pack has been made and the stickers have been added, you can now manage it in the official stickers bot or access it right now with https://t.me/addstickers/' + self.packname)
+                            self.close()
+                    except AttributeError:
+                        return
+                elif command.startswith('/edit'):
+                    #print(await bot.getStickerSet('rakutest3_by_batchstickerbot'))
+                    await self.sender.sendMessage(self.askedit, reply_markup=ForceReply())
                 # Check if the user is replying to one of the bots messages and whicih one it is.
                 else:
                     try:
@@ -58,6 +65,8 @@ class Stickers(telepot.aio.helper.ChatHandler):
                             await self.titlehandler(msg)
                         elif reply_text == self.donemsg:
                             self.stickeremoji = msg['text']
+                        elif reply_text == self.askedit:
+                            await self.checkownership(msg)
                     except KeyError:
                         return
             # Stickers are added as documents.
@@ -66,7 +75,7 @@ class Stickers(telepot.aio.helper.ChatHandler):
             # We don't want them sent as photos
             elif content_type == 'photo':
                 try:
-                    if self.packname and self.packtitle:
+                    if (self.packname and self.packtitle) or self.editing:
                         await self.sender.sendMessage('Please send the image as a file(uncompressed).', reply_to_message_id=msg_id)
                 except AttributeError:
                     pass
@@ -108,7 +117,7 @@ class Stickers(telepot.aio.helper.ChatHandler):
     async def uploader(self, msg):
         content_type, chat_type, chat_id, msg_date, msg_id = telepot.glance(msg, long=True)
         try:
-            if self.packname and self.packtitle:
+            if (self.packname and self.packtitle) or self.editing:
                 if msg['document']['mime_type'] == 'image/png':
                     try:
                         # You have to initialize the pack by creating it with a sticker, and we only do this once, afterwards self.packmade is set to true.
@@ -129,6 +138,23 @@ class Stickers(telepot.aio.helper.ChatHandler):
                     await self.sender.sendMessage('File is the wrong type.', reply_to_message_id=msg_id)
         except AttributeError:
             return
+    async def checkownership(self, msg):
+        packname = msg['text']
+        try:
+            await self.sender.sendChatAction('typing')
+            await bot.addStickerToSet(self.from_id, packname, 'BQADBAADiQIAAlrMkFAokegTxHmJZAI', self.stickeremoji)
+            await asyncio.sleep(10.0)
+            setobj = await bot.getStickerSet(packname)
+            testid = setobj['stickers'][-1]['file_id']
+            await bot.deleteStickerFromSet(testid)
+            self.packname = packname
+            self.packtitle = False
+            self.packmade = True
+            self.editing = True
+            await self.sender.sendMessage(self.donemsg)
+        except telepot.exception.TelegramError as e:
+            await self.sender.sendMessage('Sorry you dont appear to be the owner of this pack or it doesnt exist.')
+            print(e)
 
 
 bot = telepot.aio.DelegatorBot(key['telegram'], [
