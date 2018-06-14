@@ -18,13 +18,14 @@ class Stickers(telepot.aio.helper.ChatHandler):
     # Most of the messages are stored in variables so checking replies is easy, might as well do it here right?
     def __init__(self, *args, **kwargs):
         super(Stickers, self).__init__(*args, **kwargs)
-        self.askname = 'What do you want to name the pack?'
+        self.askname = 'What do you want to name the pack? This will be the url of the pack, for example in\nhttps://t.me/addstickers/animals\n\'animals\' would be the pack name.'
         self.retryname = 'Sorry, that name isnt valid, please try another.'
-        self.asktitle = 'Great, now what do you want the title to be?'
+        self.asktitle = 'Great, now what do you want the title to be? The title is displayed at the top of the pack, using the same pack as earlier for an example, \'Just zoo it! (@TrendingStickers)\' would be the title of that pack.'
         self.retrytitle = 'Sorry this title is too long, keep it less than 64 characters.'
         self.donemsg = 'You\'re ready to go! Start sending images and I will add them to the pack, then send /done when you\'re done, or reply to this message to set the emoji to be associated with the stickers.'
         self.stickeremoji = '😶'
         self.askedit = 'What is the name of the sticker pack you want to edit? Please note, I can only edit packs I have created.'
+        self.askreply = 'Please reply directly to the message you are responding to.'
 
     # open() is for the first message the bot receieves of the delegattion, I don't have any need to have a starting message every time so we just pass it to on_chat_message() like every other message.
     async def open(self, initial_msg, seed):
@@ -68,6 +69,7 @@ class Stickers(telepot.aio.helper.ChatHandler):
                         elif reply_text == self.askedit:
                             await self.checkownership(msg)
                     except KeyError:
+                        await self.sender.sendMessage(self.askreply);
                         return
             # Stickers are added as documents.
             elif content_type == 'document':
